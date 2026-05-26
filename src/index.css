@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+:root {
+  --mimic-green: #58cc02;
+  --mimic-green-dark: #46a302;
+  --mimic-blue: #1cb0f6;
+  --mimic-orange: #ff9600;
+  --mimic-red: #ff4b4b;
+  --mimic-purple: #ce82ff;
+  --mimic-bg: #f7f7f7;
+  --mimic-card: #ffffff;
+  --mimic-text: #3c3c3c;
+  --mimic-border: #e5e5e5;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background-color: var(--mimic-bg);
+  color: var(--mimic-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+}
