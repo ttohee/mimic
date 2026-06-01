@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 import { LEVELS, NAV, USER } from "../lib/data";
 import type { Level, ViewType } from "../types";
+import mascotSrc from "../assets/mascot.svg";
 
 /* ─── Icon ─── */
 type IconName =
@@ -260,7 +261,7 @@ export function Parrot({
   return (
     <img
       id={`parrot-${slot}`}
-      src="../assets/mascot.svg"
+      src={mascotSrc}
       alt="Mimic 캐릭터"
       style={{
         width: w,
