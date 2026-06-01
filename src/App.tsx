@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Sidebar } from './components/Shell';
+import { useAuth } from './context/AuthContext';
 import Landing    from './pages/Landing';
 import Auth       from './pages/Auth';
 import Home       from './pages/Home';
@@ -15,7 +16,7 @@ import type { Message, ResultData, Scenario, TweakState, ViewType, VocabWord } f
 
 /* ─── Persistence ─── */
 const LS = 'mimic_state_v1';
-function loadState() { try { return JSON.parse(localStorage.getItem(LS) ?? '{}') as Partial<{ authed: boolean; view: ViewType; words: VocabWord[]; notif: boolean }>; } catch { return {}; } }
+function loadState() { try { return JSON.parse(localStorage.getItem(LS) ?? '{}') as Partial<{ view: ViewType; words: VocabWord[]; notif: boolean }>; } catch { return {}; } }
 function saveState(s: object) { try { localStorage.setItem(LS, JSON.stringify(s)); } catch { /* noop */ } }
 
 /* ─── CSS variable helpers ─── */
@@ -108,11 +109,13 @@ function TSelect({ label, value, options, onChange }: { label: string; value: st
 
 /* ─── App ─── */
 export default function App() {
+  const { user, loading: authLoading, signOut } = useAuth();
+  const authed = !!user;
+
   const persisted = useRef(loadState()).current;
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
 
-  const [authed, setAuthed] = useState(persisted.authed ?? false);
-  const [view, setView]     = useState<ViewType>(persisted.authed ? (persisted.view ?? 'home') : 'landing');
+  const [view, setView]     = useState<ViewType>(persisted.view ?? 'landing');
   const [authTab, setAuthTab] = useState<'login' | 'signup'>('login');
   const [scenario, setScenario] = useState<Scenario | null>(null);
   const [result, setResult]     = useState<ResultData | null>(null);
@@ -120,16 +123,24 @@ export default function App() {
   const [words, setWords] = useState<VocabWord[]>(persisted.words ?? VOCAB_SEED);
   const [notif, setNotif] = useState(persisted.notif ?? true);
 
+  /* Supabase 세션 복원 시 홈으로 이동 */
+  useEffect(() => {
+    if (!authLoading) {
+      if (authed && (view === 'landing' || view === 'auth')) setView('home');
+      if (!authed && view !== 'landing' && view !== 'auth') setView('landing');
+    }
+  }, [authed, authLoading]);
+
   useEffect(() => { applyBrand(t.brandHue); }, [t.brandHue]);
   useEffect(() => { applySidebar(t.sidebar, t.brandHue); }, [t.sidebar, t.brandHue]);
   useEffect(() => { document.documentElement.style.setProperty('--r-scale', String(t.roundness)); }, [t.roundness]);
   useEffect(() => { document.documentElement.style.setProperty('--font-kr', `'${t.fontKr}', sans-serif`); document.documentElement.style.setProperty('--font-body', `'${t.fontKr}', sans-serif`); }, [t.fontKr]);
-  useEffect(() => { saveState({ authed, view: ['chat', 'result'].includes(view) ? 'home' : view, words, notif }); }, [authed, view, words, notif]);
+  useEffect(() => { saveState({ view: ['chat', 'result'].includes(view) ? 'home' : view, words, notif }); }, [view, words, notif]);
 
   const go = (v: ViewType) => { setView(v); window.scrollTo(0, 0); };
   const startAuth = (tab: 'login' | 'signup') => { setAuthTab(tab); setView('auth'); };
-  const onAuthed  = () => { setAuthed(true); go('home'); };
-  const logout    = () => { setAuthed(false); setView('landing'); };
+  const onAuthed  = () => go('home');
+  const logout    = () => { signOut(); setView('landing'); };
   const pickScenario = (s: Scenario) => { setScenario(s); go('chat'); };
 
   function endChat(msgs: Message[], s: Scenario) {
@@ -151,7 +162,23 @@ export default function App() {
   const masterWord = (w: VocabWord) => setWords(prev => prev.filter(x => x.word !== w.word));
   const missWord   = (w: VocabWord) => setWords(prev => prev.map(x => x.word === w.word ? { ...x, miss: x.miss + 1 } : x));
   function resetData() {
-    if (confirm('학습 데이터를 모두 초기화할까요?')) { setWords(VOCAB_SEED); localStorage.removeItem(LS); }
+    if (confirm('학습 데이터를 모두 초기화할까요?')) {
+      setWords(VOCAB_SEED);
+      localStorage.removeItem(LS);
+    }
+  }
+
+  /* Supabase 세션 확인 중 — 빈 화면 대신 스피너 */
+  if (authLoading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg)' }}>
+        <div style={{ textAlign: 'center', color: 'var(--text-3)' }}>
+          <div style={{ width: 44, height: 44, border: '4px solid var(--brand-200)', borderTopColor: 'var(--brand-500)', borderRadius: '50%', margin: '0 auto 14px', animation: 'spin 0.8s linear infinite' }} />
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>로딩 중…</div>
+        </div>
+      </div>
+    );
   }
 
   const tweaksUI = (
@@ -174,7 +201,7 @@ export default function App() {
   );
 
   /* Full-page views (no sidebar) */
-  if (!authed && view === 'landing') return <><Landing go={go} onStart={startAuth} />{tweaksUI}</>;
+  if (view === 'landing' || (!authed && view !== 'auth')) return <><Landing go={go} onStart={startAuth} />{tweaksUI}</>;
   if (view === 'auth') return <><Auth initialTab={authTab} onAuthed={onAuthed} go={go} />{tweaksUI}</>;
 
   /* Shell views */
