@@ -90,6 +90,11 @@ export default function App() {
 
   /* ── 대화 종료 ── */
   function endChat(msgs: Message[], s: Scenario) {
+    const userMsgs = msgs.filter(m => m.role === 'user');
+    if (userMsgs.length === 0) {
+      go('home');
+      return;
+    }
     const r = buildResult(msgs, s);
     setResult(r);
 

@@ -16,8 +16,6 @@ const TRICKY: Record<string, Omit<WeakWord, 'word' | 'score'>> = {
   passport:     { native: '/ˈpɑːspɔːt/',    mine: '/ˈpæspɔːrt/',   weak: '발음', ko: '여권' },
 };
 
-const FALLBACK = ['itinerary', 'turbulence', 'baggage', 'reservation'];
-
 function seededScore(str: string, lo: number, hi: number): number {
   let h = 0;
   for (let i = 0; i < str.length; i++) h = ((h * 31) + str.charCodeAt(i)) >>> 0;
@@ -26,27 +24,21 @@ function seededScore(str: string, lo: number, hi: number): number {
 
 export function buildResult(msgs: Message[], _scenario: Scenario): ResultData {
   const userMsgs = msgs.filter(m => m.role === 'user');
-  const userLines = userMsgs.length ? userMsgs : [
-    { text: "Yes, I have a flight to New York at 1 PM.", confidence: undefined },
-  ];
-  const lines = userLines.map(m => {
-    // STT confidence 있으면 실제 점수, 없으면(타이핑) seeded mock
+  const lines = userMsgs.map(m => {
     const score = m.confidence != null
       ? Math.round(Math.max(20, Math.min(100, m.confidence * 100)))
       : seededScore(m.text, 58, 96);
     return { text: m.text, score };
   });
 
-  const found: string[] = [];
+  // 사용자가 실제로 말한 문장에서 TRICKY 단어만 추출 (패딩 없음)
   const seen = new Set<string>();
+  const pool: string[] = [];
   lines.forEach(l =>
     l.text.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/).forEach(w => {
-      if (TRICKY[w] && !seen.has(w)) { seen.add(w); found.push(w); }
+      if (TRICKY[w] && !seen.has(w)) { seen.add(w); pool.push(w); }
     })
   );
-  let pool = [...found];
-  FALLBACK.forEach(w => { if (!seen.has(w) && pool.length < 4) { seen.add(w); pool.push(w); } });
-  pool = pool.slice(0, 4);
 
   const weak: WeakWord[] = pool.map(w => ({
     word: w,
@@ -54,7 +46,9 @@ export function buildResult(msgs: Message[], _scenario: Scenario): ResultData {
     score: seededScore(w, 30, 58),
   }));
 
-  const overall = Math.round(lines.reduce((a, l) => a + l.score, 0) / lines.length);
+  const overall = lines.length
+    ? Math.round(lines.reduce((a, l) => a + l.score, 0) / lines.length)
+    : 0;
   return {
     overall,
     accuracy:  Math.min(99, overall + seededScore('acc' + overall, -4, 8)),

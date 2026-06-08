@@ -122,9 +122,7 @@ export default function Landing({ go: _go, onStart }: Props) {
       <footer style={{ borderTop: '1px solid var(--border)', padding: '28px 32px' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
           <Wordmark size={20} />
-          <div style={{ display: 'flex', gap: 22, fontSize: 13.5, color: 'var(--text-3)' }}>
-            <span>이용약관</span><span>개인정보처리방침</span><span>고객센터</span>
-          </div>
+          <div style={{ fontSize: 13, color: 'var(--text-3)' }}>AI 영어 회화 학습 서비스</div>
           <div style={{ fontSize: 13, color: 'var(--text-3)' }}>© 2026 Mimic</div>
         </div>
       </footer>
