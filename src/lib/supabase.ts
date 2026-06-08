@@ -1,7 +1,70 @@
 /// <reference types="vite/client" />
 import { createClient } from '@supabase/supabase-js';
+import type { TranscriptEntry, VocabWord } from '../types';
 
-const supabaseUrl     = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+export const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY,
+);
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+/* ── Transcripts ──────────────────────────────────────────── */
+
+export async function saveTranscript(userId: string, entry: TranscriptEntry) {
+  const { error } = await supabase.from('transcripts').upsert({
+    id: entry.id,
+    user_id: userId,
+    scenario: entry.scenario,
+    date: entry.date,
+    score: entry.score,
+    lines: entry.lines,
+  });
+  if (error) console.warn('[supabase] saveTranscript:', error.message);
+  return error;
+}
+
+export async function loadTranscripts(userId: string): Promise<TranscriptEntry[]> {
+  const { data, error } = await supabase
+    .from('transcripts')
+    .select('id, scenario, date, score, lines')
+    .eq('user_id', userId)
+    .order('date', { ascending: false })
+    .limit(50);
+  if (error) { console.warn('[supabase] loadTranscripts:', error.message); return []; }
+  return (data ?? []).map(r => ({
+    id: r.id as string,
+    scenario: r.scenario as string,
+    date: r.date as string,
+    score: r.score as number,
+    lines: r.lines as [string, string][],
+  }));
+}
+
+/* ── Vocab ────────────────────────────────────────────────── */
+
+export async function upsertVocab(userId: string, word: VocabWord) {
+  const { error } = await supabase.from('vocab_words').upsert(
+    { ...word, user_id: userId },
+    { onConflict: 'user_id,word' },
+  );
+  if (error) console.warn('[supabase] upsertVocab:', error.message);
+  return error;
+}
+
+export async function deleteVocabWord(userId: string, word: string) {
+  const { error } = await supabase
+    .from('vocab_words')
+    .delete()
+    .eq('user_id', userId)
+    .eq('word', word);
+  if (error) console.warn('[supabase] deleteVocabWord:', error.message);
+}
+
+export async function loadVocab(userId: string): Promise<VocabWord[]> {
+  const { data, error } = await supabase
+    .from('vocab_words')
+    .select('word, ipa, ko, miss, weak, scenario, added, score')
+    .eq('user_id', userId)
+    .order('added', { ascending: false });
+  if (error) { console.warn('[supabase] loadVocab:', error.message); return []; }
+  return (data ?? []) as VocabWord[];
+}

@@ -12,11 +12,18 @@ import Ranking    from './pages/Ranking';
 import MyPage     from './pages/MyPage';
 import { VOCAB_SEED } from './lib/data';
 import { buildResult } from './lib/result';
-import type { Message, ResultData, Scenario, TweakState, ViewType, VocabWord } from './types';
+import {
+  saveTranscript, loadTranscripts,
+  upsertVocab, deleteVocabWord, loadVocab,
+} from './lib/supabase';
+import type { Message, ResultData, Scenario, TweakState, ViewType, VocabWord, TranscriptEntry } from './types';
 
 /* ─── Persistence ─── */
 const LS = 'mimic_state_v1';
-function loadState() { try { return JSON.parse(localStorage.getItem(LS) ?? '{}') as Partial<{ view: ViewType; words: VocabWord[]; notif: boolean }>; } catch { return {}; } }
+function loadState() {
+  try { return JSON.parse(localStorage.getItem(LS) ?? '{}') as Partial<{ view: ViewType; words: VocabWord[]; transcripts: TranscriptEntry[]; notif: boolean }>; }
+  catch { return {}; }
+}
 function saveState(s: object) { try { localStorage.setItem(LS, JSON.stringify(s)); } catch { /* noop */ } }
 
 /* ─── CSS variable helpers ─── */
@@ -115,15 +122,17 @@ export default function App() {
   const persisted = useRef(loadState()).current;
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
 
-  const [view, setView]     = useState<ViewType>(persisted.view ?? 'landing');
+  const [view, setView]       = useState<ViewType>(persisted.view ?? 'landing');
   const [authTab, setAuthTab] = useState<'login' | 'signup'>('login');
   const [scenario, setScenario] = useState<Scenario | null>(null);
   const [result, setResult]     = useState<ResultData | null>(null);
   const [addedWords, setAddedWords] = useState<string[]>([]);
+
   const [words, setWords] = useState<VocabWord[]>(persisted.words ?? VOCAB_SEED);
+  const [transcripts, setTranscripts] = useState<TranscriptEntry[]>(persisted.transcripts ?? []);
   const [notif, setNotif] = useState(persisted.notif ?? true);
 
-  /* Supabase 세션 복원 시 홈으로 이동 */
+  /* ── Supabase 세션 복원 시 홈으로 이동 ── */
   useEffect(() => {
     if (!authLoading) {
       if (authed && (view === 'landing' || view === 'auth')) setView('home');
@@ -131,11 +140,34 @@ export default function App() {
     }
   }, [authed, authLoading]);
 
+  /* ── 로그인 시 Supabase DB에서 데이터 불러오기 ── */
+  useEffect(() => {
+    if (!user) return;
+    loadTranscripts(user.id).then(rows => {
+      if (rows.length > 0) setTranscripts(rows);
+    });
+    loadVocab(user.id).then(rows => {
+      if (rows.length > 0) setWords(rows);
+    });
+  }, [user?.id]);
+
   useEffect(() => { applyBrand(t.brandHue); }, [t.brandHue]);
   useEffect(() => { applySidebar(t.sidebar, t.brandHue); }, [t.sidebar, t.brandHue]);
   useEffect(() => { document.documentElement.style.setProperty('--r-scale', String(t.roundness)); }, [t.roundness]);
-  useEffect(() => { document.documentElement.style.setProperty('--font-kr', `'${t.fontKr}', sans-serif`); document.documentElement.style.setProperty('--font-body', `'${t.fontKr}', sans-serif`); }, [t.fontKr]);
-  useEffect(() => { saveState({ view: ['chat', 'result'].includes(view) ? 'home' : view, words, notif }); }, [view, words, notif]);
+  useEffect(() => {
+    document.documentElement.style.setProperty('--font-kr', `'${t.fontKr}', sans-serif`);
+    document.documentElement.style.setProperty('--font-body', `'${t.fontKr}', sans-serif`);
+  }, [t.fontKr]);
+
+  /* ── localStorage 동기화 ── */
+  useEffect(() => {
+    saveState({
+      view: ['chat', 'result'].includes(view) ? 'home' : view,
+      words,
+      transcripts: transcripts.slice(0, 30), // keep latest 30
+      notif,
+    });
+  }, [view, words, transcripts, notif]);
 
   const go = (v: ViewType) => { setView(v); window.scrollTo(0, 0); };
   const startAuth = (tab: 'login' | 'signup') => { setAuthTab(tab); setView('auth'); };
@@ -143,32 +175,71 @@ export default function App() {
   const logout    = () => { signOut(); setView('landing'); };
   const pickScenario = (s: Scenario) => { setScenario(s); go('chat'); };
 
+  /* ── 대화 종료 ── */
   function endChat(msgs: Message[], s: Scenario) {
     const r = buildResult(msgs, s);
     setResult(r);
+
+    // 발음 50점 미만 → 단어장 자동 추가
     const toAdd = r.weak.filter(w => w.score < 50);
+    const newWords: VocabWord[] = [];
     setWords(prev => {
       const have = new Set(prev.map(p => p.word));
-      const add: VocabWord[] = toAdd.filter(w => !have.has(w.word)).map(w => ({
-        word: w.word, ipa: w.native, ko: w.ko, miss: 1, weak: w.weak,
-        scenario: s.id, added: new Date().toISOString().slice(0, 10), score: w.score,
-      }));
+      const add: VocabWord[] = toAdd
+        .filter(w => !have.has(w.word))
+        .map(w => ({
+          word: w.word, ipa: w.native, ko: w.ko, miss: 1,
+          weak: w.weak, scenario: s.id,
+          added: new Date().toISOString().slice(0, 10),
+          score: w.score,
+        }));
+      newWords.push(...add);
       return [...add, ...prev];
     });
     setAddedWords(toAdd.map(w => w.word));
+
+    // Supabase에 신규 단어 저장
+    if (user && newWords.length > 0) {
+      newWords.forEach(w => upsertVocab(user.id, w));
+    }
+
+    // 대본 저장
+    const entry: TranscriptEntry = {
+      id: `t_${Date.now()}`,
+      scenario: s.id,
+      date: new Date().toISOString().slice(0, 10),
+      score: r.overall,
+      lines: msgs.map(m => [m.role === 'assistant' ? 'Mimic' : 'Me', m.text]),
+    };
+    setTranscripts(prev => [entry, ...prev]);
+    if (user) saveTranscript(user.id, entry);
+
     go('result');
   }
 
-  const masterWord = (w: VocabWord) => setWords(prev => prev.filter(x => x.word !== w.word));
-  const missWord   = (w: VocabWord) => setWords(prev => prev.map(x => x.word === w.word ? { ...x, miss: x.miss + 1 } : x));
+  /* ── 단어장 마스터 / 오답 ── */
+  function masterWord(w: VocabWord) {
+    setWords(prev => prev.filter(x => x.word !== w.word));
+    if (user) deleteVocabWord(user.id, w.word);
+  }
+  function missWord(w: VocabWord) {
+    setWords(prev => prev.map(x => {
+      if (x.word !== w.word) return x;
+      const updated = { ...x, miss: x.miss + 1 };
+      if (user) upsertVocab(user.id, updated);
+      return updated;
+    }));
+  }
+
   function resetData() {
     if (confirm('학습 데이터를 모두 초기화할까요?')) {
       setWords(VOCAB_SEED);
+      setTranscripts([]);
       localStorage.removeItem(LS);
     }
   }
 
-  /* Supabase 세션 확인 중 — 빈 화면 대신 스피너 */
+  /* ── 로딩 스피너 ── */
   if (authLoading) {
     return (
       <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg)' }}>
@@ -187,8 +258,9 @@ export default function App() {
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 8, fontWeight: 600 }}>메인 컬러</div>
         <div style={{ display: 'flex', gap: 8 }}>
-          {HUE_SWATCHES.map(s => (
-            <button key={s.v} onClick={() => setTweak('brandHue', s.v)} title={s.label} style={{ width: 34, height: 34, borderRadius: 10, cursor: 'pointer', background: `oklch(0.69 0.21 ${s.v})`, border: t.brandHue === s.v ? '3px solid var(--text)' : '3px solid #fff', boxShadow: '0 1px 3px rgba(0,0,0,.18)' }} />
+          {HUE_SWATCHES.map(sw => (
+            <button key={sw.v} onClick={() => setTweak('brandHue', sw.v)} title={sw.label}
+              style={{ width: 34, height: 34, borderRadius: 10, cursor: 'pointer', background: `oklch(0.69 0.21 ${sw.v})`, border: t.brandHue === sw.v ? '3px solid var(--text)' : '3px solid #fff', boxShadow: '0 1px 3px rgba(0,0,0,.18)' }} />
           ))}
         </div>
       </div>
@@ -206,14 +278,14 @@ export default function App() {
 
   /* Shell views */
   let content: React.ReactNode;
-  if (view === 'home')                     content = <Home go={go} onPick={pickScenario} homeLayout={t.homeLayout} />;
-  else if (view === 'chat' && scenario)    content = <Chat scenario={scenario} go={go} onEnd={endChat} />;
-  else if (view === 'result' && result)    content = <Result data={result} scenario={scenario!} go={go} addedWords={addedWords} onRetry={() => go('chat')} />;
-  else if (view === 'vocab')               content = <Vocab words={words} onMaster={masterWord} onMiss={missWord} />;
-  else if (view === 'transcript')          content = <Transcript go={go} />;
-  else if (view === 'ranking')             content = <Ranking />;
-  else if (view === 'mypage')              content = <MyPage go={go} notif={notif} setNotif={setNotif} onReset={resetData} vocabCount={words.length} />;
-  else                                     content = <Home go={go} onPick={pickScenario} homeLayout={t.homeLayout} />;
+  if      (view === 'home')                  content = <Home go={go} onPick={pickScenario} homeLayout={t.homeLayout} />;
+  else if (view === 'chat' && scenario)      content = <Chat scenario={scenario} go={go} onEnd={endChat} />;
+  else if (view === 'result' && result)      content = <Result data={result} scenario={scenario!} go={go} addedWords={addedWords} onRetry={() => go('chat')} />;
+  else if (view === 'vocab')                 content = <Vocab words={words} onMaster={masterWord} onMiss={missWord} />;
+  else if (view === 'transcript')            content = <Transcript go={go} transcripts={transcripts} />;
+  else if (view === 'ranking')               content = <Ranking />;
+  else if (view === 'mypage')                content = <MyPage go={go} notif={notif} setNotif={setNotif} onReset={resetData} vocabCount={words.length} transcripts={transcripts} words={words} />;
+  else                                       content = <Home go={go} onPick={pickScenario} homeLayout={t.homeLayout} />;
 
   const sidebarView = (['chat', 'result'] as ViewType[]).includes(view) ? 'home' : view;
 
