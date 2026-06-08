@@ -1,4 +1,4 @@
-import { Icon, LogoMark, PageHead, levelBadge } from '../components/Shell';
+import { Icon, ProfileAvatar, PageHead, levelBadge } from '../components/Shell';
 import { scoreColor } from '../lib/result';
 import type { TranscriptEntry, ViewType, VocabWord } from '../types';
 import { useAuth } from '../context/AuthContext';
@@ -101,9 +101,7 @@ export default function MyPage({ go: _go, onReset, transcripts, words }: Props) 
 
       {/* profile */}
       <div className="card" style={{ padding: '24px 28px', borderRadius: 'var(--r-xl)', display: 'flex', alignItems: 'center', gap: 22, marginBottom: 18, background: 'linear-gradient(120deg, var(--brand-50), var(--surface) 65%)' }}>
-        <div style={{ width: 84, height: 84, borderRadius: '50%', background: 'linear-gradient(150deg,var(--brand-300),var(--brand-600))', display: 'grid', placeItems: 'center', flexShrink: 0, boxShadow: 'var(--sh-md)' }}>
-          <LogoMark size={46} />
-        </div>
+        <ProfileAvatar size={84} />
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <h2 style={{ margin: 0, fontSize: 23, fontWeight: 800 }}>{nickname}</h2>

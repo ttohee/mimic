@@ -71,6 +71,14 @@ export default function Chat({ scenario, go, onEnd }: Props) {
     if (autoSpeak) { const t = setTimeout(() => speakEN(s.opener), 400); return () => clearTimeout(t); }
   }, []);
 
+  // 페이지 벗어날 때 TTS + 마이크 즉시 중단
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis.cancel();
+      recRef.current?.stop();
+    };
+  }, []);
+
   async function send(text: string, confidence?: number) {
     const t = text.trim();
     if (!t || thinking) return;
@@ -101,7 +109,7 @@ Rules:
     if (listening) { recRef.current?.stop(); return; }
 
     const rec = new SR();
-    rec.lang = 'en-US'; rec.interimResults = true; rec.continuous = false;
+    rec.lang = 'en-US'; rec.interimResults = true; rec.continuous = true;
     let finalText = '';
     let finalConfidence = 0;
 
@@ -194,8 +202,8 @@ Rules:
           </button>
           <div style={{ fontSize: 13, color: 'var(--text-3)', textAlign: 'center' }}>
             {listening
-              ? '다시 누르면 멈춰요 · 말하기가 끝나면 자동으로 전송돼요'
-              : '버튼을 누르고 영어로 말해보세요'}
+              ? '마이크를 눌러 발화 종료'
+              : '마이크를 눌러 대화 시작'}
           </div>
         </div>
       </div>

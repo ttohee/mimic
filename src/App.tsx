@@ -17,6 +17,7 @@ import {
   upsertProfile,
 } from './lib/supabase';
 import type { Message, ResultData, Scenario, ViewType, VocabWord, TranscriptEntry } from './types';
+import Swal from 'sweetalert2';
 
 /* ─── Persistence ─── */
 const LS = 'mimic_state_v1';
@@ -166,8 +167,18 @@ export default function App() {
     }));
   }
 
-  function resetData() {
-    if (confirm('학습 데이터를 모두 초기화할까요?')) {
+  async function resetData() {
+    const res = await Swal.fire({
+      title: '학습 데이터 초기화',
+      text: '모든 단어장·대본 데이터가 삭제돼요. 되돌릴 수 없어요.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: '초기화',
+      cancelButtonText: '취소',
+      confirmButtonColor: '#ef4444',
+      cancelButtonColor: '#6b7280',
+    });
+    if (res.isConfirmed) {
       setWords([]);
       setTranscripts([]);
       localStorage.removeItem(LS);

@@ -4,6 +4,7 @@ import { LEVELS, NAV } from "../lib/data";
 import { useAuth } from "../context/AuthContext";
 import type { Level, ViewType } from "../types";
 import mascotSrc from "../assets/mascot.svg";
+import profileIconSrc from "../assets/profile_icon.svg";
 
 /* ─── Icon ─── */
 type IconName =
@@ -66,6 +67,14 @@ export function Wordmark({ size = 26, mark = true }: { size?: number; mark?: boo
       {mark && <LogoMark size={size * 1.12} />}
       <span>Mimic</span>
     </span>
+  );
+}
+
+/* ─── ProfileAvatar ─── */
+export function ProfileAvatar({ size = 40 }: { size?: number }) {
+  return (
+    <img src={profileIconSrc} alt="profile"
+      style={{ width: size, height: size, borderRadius: "50%", display: "block", objectFit: "cover", flexShrink: 0 }} />
   );
 }
 
@@ -134,9 +143,7 @@ export function Sidebar({ view, go, onLogout, darkMode, onToggleDark }: {
 
       {/* profile */}
       <div style={{ display: "flex", alignItems: "center", gap: 11, padding: "0 8px 18px", borderBottom: "1px solid var(--border)" }}>
-        <div style={{ width: 40, height: 40, borderRadius: "50%", background: "linear-gradient(150deg,var(--brand-300),var(--brand-600))", display: "grid", placeItems: "center", flexShrink: 0 }}>
-          <LogoMark size={22} />
-        </div>
+        <ProfileAvatar size={40} />
         <div style={{ overflow: "hidden" }}>
           <div style={{ fontWeight: 700, color: "var(--text)", fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nickname}</div>
           <div style={{ fontSize: 11.5, color: "var(--text-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{email}</div>

@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import Swal from 'sweetalert2';
 import { Icon, ScoreRing, PageHead } from '../components/Shell';
 import { speakEN } from '../lib/speech';
 import type { VocabWord } from '../types';
@@ -58,7 +59,8 @@ function Drill({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) {
-      alert('음성 인식을 지원하지 않는 브라우저예요. Chrome을 사용해주세요.');
+      Swal.fire({ icon: 'info', title: '브라우저 미지원', text: '음성 인식을 지원하지 않는 브라우저예요. Chrome을 사용해주세요.', confirmButtonColor: '#1fc11f' });
+
       return;
     }
     let gotResult = false;

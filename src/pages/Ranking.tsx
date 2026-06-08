@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Icon, LogoMark, PageHead } from '../components/Shell';
+import { Icon, ProfileAvatar, PageHead } from '../components/Shell';
 import { SCENARIOS } from '../lib/data';
 import { loadLeaderboard, loadFeed, type LeaderboardEntry, type FeedEntry } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -62,7 +62,7 @@ export default function Ranking() {
                   return (
                     <div key={u.user_id} className="card" style={{ padding: '18px 10px 16px', borderRadius: 'var(--r-lg)', textAlign: 'center', marginTop: tall ? 0 : 16, border: tall ? '2px solid #F5C518' : '1px solid var(--border)' }}>
                       <div style={{ fontSize: 22 }}>{u.rank === 1 ? '🥇' : u.rank === 2 ? '🥈' : '🥉'}</div>
-                      <div style={{ width: 52, height: 52, borderRadius: '50%', margin: '8px auto', background: 'linear-gradient(150deg,var(--brand-300),var(--brand-600))', display: 'grid', placeItems: 'center' }}><LogoMark size={28} /></div>
+                      <div style={{ margin: '8px auto', width: 52, height: 52 }}><ProfileAvatar size={52} /></div>
                       <div style={{ fontWeight: 800, fontSize: 14.5 }}>{u.nickname}</div>
                       <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 22, color: 'var(--brand-strong)' }}>{u.avg_score}<span style={{ fontSize: 12, color: 'var(--text-3)' }}>점</span></div>
                     </div>
@@ -74,9 +74,7 @@ export default function Ranking() {
               {board.map((u, i) => (
                 <div key={u.user_id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px', borderBottom: i < board.length - 1 ? '1px solid var(--border)' : 'none', background: u.you ? 'var(--brand-50)' : 'transparent' }}>
                   <div style={{ width: 30, textAlign: 'center', fontWeight: 800, fontSize: 16, color: medalColor(u.rank) ?? 'var(--text-3)' }}>{u.rank}</div>
-                  <div style={{ width: 40, height: 40, borderRadius: '50%', background: u.you ? 'linear-gradient(150deg,var(--brand-300),var(--brand-600))' : '#E7ECE5', display: 'grid', placeItems: 'center' }}>
-                    {u.you ? <LogoMark size={22} /> : <Icon name="user" size={20} style={{ color: 'var(--text-3)' }} />}
-                  </div>
+                  <ProfileAvatar size={40} />
                   <div style={{ flex: 1, fontWeight: u.you ? 800 : 600, fontSize: 15 }}>
                     {u.nickname} {u.you && <span className="badge badge-beg" style={{ marginLeft: 6 }}>나</span>}
                   </div>
@@ -103,7 +101,7 @@ export default function Ranking() {
               return (
                 <div key={i} className="card" style={{ padding: '16px 20px', borderRadius: 'var(--r-lg)', animation: `fadeUp .4s ${i * 0.04}s` }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 10 }}>
-                    <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#E7ECE5', display: 'grid', placeItems: 'center' }}><Icon name="user" size={19} style={{ color: 'var(--text-3)' }} /></div>
+                    <ProfileAvatar size={38} />
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 700, fontSize: 14.5 }}>{v.nickname}</div>
                       <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{scenKo(v.best_scenario)}</div>

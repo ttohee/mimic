@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import Swal from 'sweetalert2';
 import { Icon, PageHead } from '../components/Shell';
 import { SCENARIOS } from '../lib/data';
 import type { TranscriptEntry, ViewType } from '../types';
@@ -75,7 +76,19 @@ export default function Transcript({ go: _go, transcripts, onDelete }: Props) {
                     </button>
                     <button
                       className="btn btn-danger btn-sm"
-                      onClick={() => { if (confirm('이 대본을 삭제할까요?')) onDelete(t.id); }}
+                      onClick={async () => {
+                        const res = await Swal.fire({
+                          title: '대본 삭제',
+                          text: '이 대본을 삭제할까요? 되돌릴 수 없어요.',
+                          icon: 'warning',
+                          showCancelButton: true,
+                          confirmButtonText: '삭제',
+                          cancelButtonText: '취소',
+                          confirmButtonColor: '#ef4444',
+                          cancelButtonColor: '#6b7280',
+                        });
+                        if (res.isConfirmed) onDelete(t.id);
+                      }}
                       style={{ padding: '6px 10px' }}
                       title="삭제"
                     >
