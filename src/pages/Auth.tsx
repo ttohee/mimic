@@ -122,9 +122,6 @@ export default function Auth({ initialTab = 'login', onAuthed, go }: Props) {
           </form>
         </div>
 
-        <p style={{ textAlign: 'center', fontSize: 12.5, color: 'var(--text-3)', marginTop: 16 }}>
-          계속 진행하면 <u>이용약관</u> 및 <u>개인정보처리방침</u>에 동의하게 됩니다.
-        </p>
       </div>
     </div>
   );

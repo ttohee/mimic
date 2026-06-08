@@ -25,12 +25,17 @@ function seededScore(str: string, lo: number, hi: number): number {
 }
 
 export function buildResult(msgs: Message[], _scenario: Scenario): ResultData {
-  const userLines = msgs.filter(m => m.role === 'user').map(m => m.text);
-  const lines = (userLines.length ? userLines : [
-    "Yes, I have a flight to New York at 1 PM.",
-    "Here's my passport. I have one suitcase to check.",
-    "Could you tell me which gate it is?",
-  ]).map(text => ({ text, score: seededScore(text, 58, 96) }));
+  const userMsgs = msgs.filter(m => m.role === 'user');
+  const userLines = userMsgs.length ? userMsgs : [
+    { text: "Yes, I have a flight to New York at 1 PM.", confidence: undefined },
+  ];
+  const lines = userLines.map(m => {
+    // STT confidence 있으면 실제 점수, 없으면(타이핑) seeded mock
+    const score = m.confidence != null
+      ? Math.round(Math.max(20, Math.min(100, m.confidence * 100)))
+      : seededScore(m.text, 58, 96);
+    return { text: m.text, score };
+  });
 
   const found: string[] = [];
   const seen = new Set<string>();

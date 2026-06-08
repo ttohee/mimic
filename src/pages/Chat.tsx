@@ -22,7 +22,8 @@ function Bubble({ m, autoSpeak }: { m: Message; autoSpeak: boolean }) {
   useEffect(() => {
     if (!mine && autoSpeak && !didSpeak.current) { didSpeak.current = true; speakEN(m.text); }
   }, []);
-  const tipMatch = !mine ? m.text.match(/\(([^)]*tip[^)]*)\)/i) : null;
+  // 팁 파싱: (Tip: ...) 형태를 감지해 별도 박스로 표시
+  const tipMatch = !mine ? m.text.match(/\(Tip:\s*([^)]+)\)/i) : null;
   const main = tipMatch ? m.text.replace(tipMatch[0], '').trim() : m.text;
   return (
     <div style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start', gap: 10, animation: 'fadeUp .35s ease' }}>
@@ -43,7 +44,7 @@ function Bubble({ m, autoSpeak }: { m: Message; autoSpeak: boolean }) {
         {tipMatch && (
           <div style={{ marginTop: 6, padding: '8px 12px', background: 'var(--brand-50)', borderRadius: 'var(--r-sm)', fontSize: 13, color: 'var(--brand-ink)', display: 'flex', gap: 7, alignItems: 'flex-start' }}>
             <Icon name="sparkle" size={15} style={{ color: 'var(--brand-strong)', flexShrink: 0, marginTop: 1 }} />
-            <span><b>Tip </b>{tipMatch[1].replace(/tip:?/i, '').trim()}</span>
+            <span><b>💡 표현 팁 </b>{tipMatch[1].trim()}</span>
           </div>
         )}
       </div>
@@ -54,11 +55,10 @@ function Bubble({ m, autoSpeak }: { m: Message; autoSpeak: boolean }) {
 export default function Chat({ scenario, go, onEnd }: Props) {
   const s = scenario;
   const [msgs, setMsgs] = useState<Message[]>([{ role: 'assistant', text: s.opener }]);
-  const [input, setInput] = useState('');
-  const [thinking, setThinking] = useState(false);
+  const [thinking, setThinking]   = useState(false);
   const [listening, setListening] = useState(false);
   const [autoSpeak, setAutoSpeak] = useState(true);
-  const [toast, setToast] = useState('');
+  const [toast, setToast]         = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recRef = useRef<any>(null);
@@ -71,20 +71,19 @@ export default function Chat({ scenario, go, onEnd }: Props) {
     if (autoSpeak) { const t = setTimeout(() => speakEN(s.opener), 400); return () => clearTimeout(t); }
   }, []);
 
-  async function send(text?: string) {
-    const t = (text != null ? text : input).trim();
+  async function send(text: string, confidence?: number) {
+    const t = text.trim();
     if (!t || thinking) return;
-    setInput('');
-    const next: Message[] = [...msgs, { role: 'user', text: t }];
+    const next: Message[] = [...msgs, { role: 'user', text: t, confidence }];
     setMsgs(next);
     setThinking(true);
     try {
-      const system = `You are "Mimic", a warm, friendly parrot character who is an English conversation tutor. You are role-playing as a ${s.role} in a "${s.en}" scenario (${s.desc}). The learner is a Korean adult practicing spoken English.
+      const system = `You are "Mimic", a warm, friendly parrot character who is an English conversation tutor. You are role-playing as a ${s.role} in a "${s.en}" scenario (${s.desc}). The learner is a Korean student practicing spoken English.
 Rules:
 - Reply ONLY in natural spoken English, 1-3 short sentences. Stay fully in character as the ${s.role}.
 - Keep the roleplay moving with a natural follow-up question.
-- About every other turn, gently add ONE short suggestion for a more natural phrasing, formatted exactly like: (Tip: ...). Do not overuse it.
-- Be encouraging and never break character to speak Korean.`;
+- About every other turn, gently add ONE short tip in Korean for a more natural phrasing. Format it EXACTLY like this at the end of your reply: (Tip: [한국어로 팁 내용]). Do not overuse it.
+- Be encouraging and never break character to speak Korean (except inside the Tip tag).`;
       const history = next.map(m => ({ role: m.role, content: m.text }));
       const reply = await claudeComplete(history, system);
       setMsgs(m => [...m, { role: 'assistant', text: reply.trim() || "Sorry, could you say that again?" }]);
@@ -98,25 +97,36 @@ Rules:
   function toggleMic() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SR: (new () => any) | undefined = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) { setToast('이 브라우저는 음성 인식을 지원하지 않아요.'); setTimeout(() => setToast(''), 2600); return; }
+    if (!SR) { setToast('이 브라우저는 음성 인식을 지원하지 않아요. Chrome을 사용해주세요.'); setTimeout(() => setToast(''), 3000); return; }
     if (listening) { recRef.current?.stop(); return; }
+
     const rec = new SR();
     rec.lang = 'en-US'; rec.interimResults = true; rec.continuous = false;
     let finalText = '';
+    let finalConfidence = 0;
+
     rec.onresult = (e: SpeechRecognitionEvent) => {
       let interim = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
-        if (r.isFinal) finalText += r[0].transcript; else interim += r[0].transcript;
+        if (r.isFinal) {
+          finalText += r[0].transcript;
+          finalConfidence = (r[0] as unknown as { confidence: number }).confidence || 0;
+        } else {
+          interim += r[0].transcript;
+        }
       }
-      setInput(finalText || interim);
+      // 중간 결과를 토스트로 표시
+      if (interim || finalText) setToast(finalText || interim);
     };
-    rec.onend = () => { setListening(false); if (finalText.trim()) send(finalText); };
-    rec.onerror = () => setListening(false);
+    rec.onend = () => {
+      setListening(false);
+      setToast('');
+      if (finalText.trim()) send(finalText, finalConfidence || undefined);
+    };
+    rec.onerror = () => { setListening(false); setToast(''); };
     recRef.current = rec; setListening(true); rec.start();
   }
-
-  function saveTranscript() { setToast('대본이 저장되었어요 ✓'); setTimeout(() => setToast(''), 2200); }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
@@ -133,10 +143,9 @@ Rules:
           </div>
           {levelBadge(s.level)}
         </div>
-        <div style={{ display: 'flex', gap: 9 }}>
-          <button className="btn btn-ghost btn-sm" onClick={saveTranscript}><Icon name="save" size={16} /> 대본 저장</button>
-          <button className="btn btn-danger btn-sm" onClick={() => onEnd(msgs, s)}><Icon name="x" size={16} /> 대화 종료</button>
-        </div>
+        <button className="btn btn-danger btn-sm" onClick={() => onEnd(msgs, s)}>
+          <Icon name="x" size={16} /> 대화 종료
+        </button>
       </div>
 
       {/* status strip */}
@@ -161,21 +170,33 @@ Rules:
         )}
       </div>
 
-      {/* input */}
-      <div style={{ background: 'var(--surface)', borderTop: '1px solid var(--border)', padding: '16px 28px 20px', flexShrink: 0 }}>
-        {toast && <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--text-3)', marginBottom: 10 }}>{toast}</div>}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, maxWidth: 760, margin: '0 auto' }}>
-          <div className="field" style={{ flex: 1, borderRadius: 'var(--r-pill)' }}>
-            <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') send(); }}
-              placeholder={listening ? '듣고 있어요…' : '영어로 입력하거나 마이크를 눌러 말해보세요'} />
-            {input && <button onClick={() => send()} style={{ border: 'none', background: 'var(--brand-500)', color: '#fff', width: 34, height: 34, borderRadius: '50%', display: 'grid', placeItems: 'center', cursor: 'pointer' }}><Icon name="send" size={17} /></button>}
-          </div>
-          <button onClick={toggleMic} style={{ width: 64, height: 64, borderRadius: '50%', border: 'none', cursor: 'pointer', flexShrink: 0, background: listening ? 'var(--lv-adv)' : 'var(--brand-500)', color: '#fff', display: 'grid', placeItems: 'center', boxShadow: 'var(--sh-brand)', animation: listening ? 'pulseRing 1.4s infinite' : 'none', transition: 'background .2s' }}>
-            <Icon name="mic" size={28} />
+      {/* mic input */}
+      <div style={{ background: 'var(--surface)', borderTop: '1px solid var(--border)', padding: '20px 28px 24px', flexShrink: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+          {/* 인식 중 텍스트 표시 */}
+          {toast && (
+            <div style={{ fontSize: 14, color: 'var(--brand-ink)', background: 'var(--brand-50)', padding: '8px 18px', borderRadius: 'var(--r-pill)', fontWeight: 600, maxWidth: 500, textAlign: 'center' }}>
+              {listening ? `🎤 "${toast}"` : toast}
+            </div>
+          )}
+          <button
+            onClick={toggleMic}
+            style={{
+              width: 72, height: 72, borderRadius: '50%', border: 'none', cursor: 'pointer',
+              background: listening ? 'var(--lv-adv)' : 'var(--brand-500)',
+              color: '#fff', display: 'grid', placeItems: 'center',
+              boxShadow: listening ? '0 0 0 0 rgba(238,90,82,0.4)' : 'var(--sh-brand)',
+              animation: listening ? 'pulseRing 1.4s infinite' : 'none',
+              transition: 'background .2s',
+            }}
+          >
+            <Icon name="mic" size={32} />
           </button>
-        </div>
-        <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-3)', marginTop: 9 }}>
-          {listening ? '다시 누르면 멈춰요' : '🎤 마이크로 말하면 자동으로 인식돼요 · 또는 직접 입력'}
+          <div style={{ fontSize: 13, color: 'var(--text-3)', textAlign: 'center' }}>
+            {listening
+              ? '다시 누르면 멈춰요 · 말하기가 끝나면 자동으로 전송돼요'
+              : '버튼을 누르고 영어로 말해보세요'}
+          </div>
         </div>
       </div>
     </div>

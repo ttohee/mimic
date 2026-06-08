@@ -71,18 +71,6 @@ export default function Landing({ go: _go, onStart }: Props) {
         </div>
       </section>
 
-      {/* stats */}
-      <section style={{ maxWidth: 1000, margin: '12px auto 0', padding: '0 32px' }}>
-        <div className="card" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', padding: '26px 8px', borderRadius: 'var(--r-xl)' }}>
-          {([['12,000+', '함께하는 학습자'], ['9', '실전 시나리오'], ['48만+', '누적 회화 분량'], ['4.9★', '학습자 만족도']] as [string, string][]).map(([n, l], i) => (
-            <div key={i} style={{ textAlign: 'center', borderRight: i < 3 ? '1px solid var(--border)' : 'none' }}>
-              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 30, color: 'var(--brand-strong)' }}>{n}</div>
-              <div style={{ fontSize: 13.5, color: 'var(--text-3)', marginTop: 2 }}>{l}</div>
-            </div>
-          ))}
-        </div>
-      </section>
-
       {/* features */}
       <section style={{ maxWidth: 1100, margin: '0 auto', padding: '72px 32px 0' }}>
         <h2 style={{ textAlign: 'center', fontSize: 33, fontWeight: 800, letterSpacing: '-0.02em', margin: 0 }}>말하기가 늘 수밖에 없는 이유</h2>

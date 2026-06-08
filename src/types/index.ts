@@ -79,6 +79,7 @@ export interface UserStats {
 export interface Message {
   role: 'user' | 'assistant';
   text: string;
+  confidence?: number; // STT 신뢰도 0-1 (음성 입력 시만 존재)
 }
 
 export interface WeakWord {
