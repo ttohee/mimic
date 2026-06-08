@@ -1,8 +1,8 @@
 import { Icon, Parrot, levelBadge } from '../components/Shell';
-import { SCENARIOS, LEVELS, USER, STATS } from '../lib/data';
+import { SCENARIOS, LEVELS } from '../lib/data';
 import type { Level, Scenario, ViewType } from '../types';
 
-interface Props { go: (v: ViewType) => void; onPick: (s: Scenario) => void; homeLayout?: 'level' | 'grid'; }
+interface Props { go: (v: ViewType) => void; onPick: (s: Scenario) => void; homeLayout?: 'level' | 'grid'; nickname: string; avgScore: number; streak: number; }
 
 function ScenarioCard({ s, onPick }: { s: Scenario; onPick: (s: Scenario) => void }) {
   const L = LEVELS[s.level];
@@ -31,7 +31,7 @@ function ScenarioCard({ s, onPick }: { s: Scenario; onPick: (s: Scenario) => voi
   );
 }
 
-export default function Home({ go, onPick, homeLayout = 'level' }: Props) {
+export default function Home({ go, onPick, homeLayout = 'level', nickname, avgScore, streak }: Props) {
   const grouped = homeLayout === 'level';
   const byLevel: Record<Level, Scenario[]> = { beg: [], mid: [], adv: [] };
   SCENARIOS.forEach(s => byLevel[s.level].push(s));
@@ -43,12 +43,15 @@ export default function Home({ go, onPick, homeLayout = 'level' }: Props) {
         <Parrot slot="home" w={104} h={104} float />
         <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: 27, fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>
-            오늘도 연습하러 왔군요, <span style={{ color: 'var(--brand-strong)' }}>{USER.name}</span>님!
+            오늘도 연습하러 왔군요, <span style={{ color: 'var(--brand-strong)' }}>{nickname}</span>님!
           </h1>
           <p style={{ color: 'var(--text-2)', margin: '7px 0 0', fontSize: 15 }}>어떤 상황에서 Mimic과 대화해볼까요? 한 마디씩 쌓다 보면 실력이 늘어요.</p>
           <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-            <span className="badge badge-streak"><Icon name="fire" size={13} /> {USER.streak}일 연속 학습 중</span>
-            <span className="badge" style={{ background: 'var(--brand-50)', color: 'var(--brand-strong)' }}>평균 발음 {STATS.avgScore}점</span>
+            {streak > 0 && <span className="badge badge-streak"><Icon name="fire" size={13} /> {streak}일 연속 학습 중</span>}
+            {avgScore > 0
+              ? <span className="badge" style={{ background: 'var(--brand-50)', color: 'var(--brand-strong)' }}>평균 발음 {avgScore}점</span>
+              : <span className="badge" style={{ background: 'var(--brand-50)', color: 'var(--brand-strong)' }}>오늘 첫 연습 도전해봐요! 🦜</span>
+            }
           </div>
         </div>
       </div>

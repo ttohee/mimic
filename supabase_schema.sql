@@ -21,6 +21,28 @@ CREATE POLICY "Users can manage own transcripts"
   ON public.transcripts FOR ALL
   USING (auth.uid() = user_id);
 
+-- ── profiles (leaderboard) ──────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.profiles (
+  user_id        UUID        PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  nickname       TEXT        NOT NULL,
+  avg_score      INTEGER     NOT NULL DEFAULT 0,
+  total_sessions INTEGER     NOT NULL DEFAULT 0,
+  best_line      TEXT,
+  best_scenario  TEXT,
+  updated_at     TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "profiles_read_all" ON public.profiles;
+CREATE POLICY "profiles_read_all"
+  ON public.profiles FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "profiles_write_own" ON public.profiles;
+CREATE POLICY "profiles_write_own"
+  ON public.profiles FOR ALL
+  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
 -- ── vocab_words ───────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.vocab_words (
   id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),

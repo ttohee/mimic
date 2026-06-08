@@ -5,8 +5,6 @@ import { useAuth } from '../context/AuthContext';
 
 interface Props {
   go: (v: ViewType) => void;
-  notif: boolean;
-  setNotif: (v: boolean) => void;
   onReset: () => void;
   vocabCount: number;
   transcripts: TranscriptEntry[];
@@ -79,7 +77,7 @@ function computeWeek(transcripts: TranscriptEntry[]): boolean[] {
 }
 
 /* ── Main ──────────────────────────────────────────────────── */
-export default function MyPage({ go: _go, notif, setNotif, onReset, transcripts, words }: Props) {
+export default function MyPage({ go: _go, onReset, transcripts, words }: Props) {
   const { user } = useAuth();
   const days = ['월', '화', '수', '목', '금', '토', '일'];
 
@@ -192,13 +190,7 @@ export default function MyPage({ go: _go, notif, setNotif, onReset, transcripts,
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}><Icon name="mic" size={17} style={{ color: 'var(--brand-strong)' }} /> 마이크 권한</div>
           <span className="badge badge-beg"><Icon name="check" size={12} /> 허용됨</span>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}><Icon name="bell" size={17} style={{ color: 'var(--brand-strong)' }} /> 학습 알림</div>
-          <button onClick={() => setNotif(!notif)} style={{ width: 46, height: 26, borderRadius: 999, border: 'none', cursor: 'pointer', background: notif ? 'var(--brand-500)' : '#CBD3C8', position: 'relative', transition: 'background .2s' }}>
-            <span style={{ position: 'absolute', top: 3, left: notif ? 23 : 3, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,.2)' }} />
-          </button>
-        </div>
-        <button className="btn btn-danger btn-sm" style={{ marginTop: 14 }} onClick={onReset}>데이터 초기화</button>
+        <button className="btn btn-danger btn-sm" style={{ marginTop: 10 }} onClick={onReset}>데이터 초기화</button>
       </div>
     </div>
   );

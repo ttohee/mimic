@@ -12,8 +12,9 @@ import Ranking    from './pages/Ranking';
 import MyPage     from './pages/MyPage';
 import { buildResult } from './lib/result';
 import {
-  saveTranscript, loadTranscripts,
+  saveTranscript, loadTranscripts, deleteTranscript as deleteTranscriptDB,
   upsertVocab, deleteVocabWord, loadVocab,
+  upsertProfile,
 } from './lib/supabase';
 import type { Message, ResultData, Scenario, ViewType, VocabWord, TranscriptEntry } from './types';
 
@@ -25,7 +26,6 @@ function loadState() {
       view: ViewType;
       words: VocabWord[];
       transcripts: TranscriptEntry[];
-      notif: boolean;
       darkMode: boolean;
     }>;
   } catch { return {}; }
@@ -47,7 +47,6 @@ export default function App() {
 
   const [words, setWords]           = useState<VocabWord[]>(persisted.words ?? []);
   const [transcripts, setTranscripts] = useState<TranscriptEntry[]>(persisted.transcripts ?? []);
-  const [notif, setNotif]           = useState(persisted.notif ?? true);
   const [darkMode, setDarkMode]     = useState(persisted.darkMode ?? false);
 
   /* ── 다크 모드 적용 ── */
@@ -66,8 +65,12 @@ export default function App() {
   /* ── 로그인 시 Supabase DB에서 데이터 불러오기 ── */
   useEffect(() => {
     if (!user) return;
-    // Supabase를 진실의 원천으로 사용 — 항상 덮어씀 (localStorage 더미값 제거)
-    loadTranscripts(user.id).then(rows => setTranscripts(rows));
+    const nickname = (user.user_metadata?.nickname as string) || user.email?.split('@')[0] || 'User';
+    loadTranscripts(user.id).then(rows => {
+      setTranscripts(rows);
+      const avg = rows.length ? Math.round(rows.reduce((s, t) => s + t.score, 0) / rows.length) : 0;
+      upsertProfile(user.id, nickname, avg, rows.length);
+    });
     loadVocab(user.id).then(rows => setWords(rows));
   }, [user?.id]);
 
@@ -77,10 +80,9 @@ export default function App() {
       view: ['chat', 'result'].includes(view) ? 'home' : view,
       words,
       transcripts: transcripts.slice(0, 30),
-      notif,
       darkMode,
     });
-  }, [view, words, transcripts, notif, darkMode]);
+  }, [view, words, transcripts, darkMode]);
 
   const go = (v: ViewType) => { setView(v); window.scrollTo(0, 0); };
   const startAuth = (tab: 'login' | 'signup') => { setAuthTab(tab); setView('auth'); };
@@ -125,10 +127,29 @@ export default function App() {
       score: r.overall,
       lines: msgs.map(m => [m.role === 'assistant' ? 'Mimic' : 'Me', m.text]),
     };
-    setTranscripts(prev => [entry, ...prev]);
-    if (user) saveTranscript(user.id, entry);
+    setTranscripts(prev => {
+      const updated = [entry, ...prev];
+      if (user) {
+        saveTranscript(user.id, entry);
+        const nickname = (user.user_metadata?.nickname as string) || user.email?.split('@')[0] || 'User';
+        const avg = Math.round(updated.reduce((s, t) => s + t.score, 0) / updated.length);
+        const bestL = r.lines.length > 0 ? [...r.lines].sort((a, b) => b.score - a.score)[0] : null;
+        if (bestL && r.overall >= 70) {
+          upsertProfile(user.id, nickname, avg, updated.length, bestL.text, s.id);
+        } else {
+          upsertProfile(user.id, nickname, avg, updated.length);
+        }
+      }
+      return updated;
+    });
 
     go('result');
+  }
+
+  /* ── 대본 삭제 ── */
+  function handleDeleteTranscript(id: string) {
+    setTranscripts(prev => prev.filter(t => t.id !== id));
+    if (user) deleteTranscriptDB(user.id, id);
   }
 
   /* ── 단어장 마스터 / 오답 ── */
@@ -170,16 +191,28 @@ export default function App() {
   if (view === 'landing' || (!authed && view !== 'auth')) return <Landing go={go} onStart={startAuth} />;
   if (view === 'auth') return <Auth initialTab={authTab} onAuthed={onAuthed} go={go} />;
 
+  /* ── 실시간 통계 계산 ── */
+  const nickname = (user?.user_metadata?.nickname as string) || user?.email?.split('@')[0] || 'Mimic 유저';
+  const avgScore = transcripts.length ? Math.round(transcripts.reduce((s, t) => s + t.score, 0) / transcripts.length) : 0;
+  const streak = (() => {
+    const today = new Date(); const dow = today.getDay();
+    const mondayOffset = dow === 0 ? 6 : dow - 1;
+    const monday = new Date(today); monday.setDate(today.getDate() - mondayOffset); monday.setHours(0,0,0,0);
+    const week = Array(7).fill(false);
+    transcripts.forEach(t => { const diff = Math.round((new Date(t.date).getTime() - monday.getTime()) / 86_400_000); if (diff >= 0 && diff < 7) week[diff] = true; });
+    return week.filter(Boolean).length;
+  })();
+
   /* Shell views */
   let content: React.ReactNode;
-  if      (view === 'home')               content = <Home go={go} onPick={pickScenario} homeLayout="level" />;
+  if      (view === 'home')               content = <Home go={go} onPick={pickScenario} homeLayout="level" nickname={nickname} avgScore={avgScore} streak={streak} />;
   else if (view === 'chat' && scenario)   content = <Chat scenario={scenario} go={go} onEnd={endChat} />;
   else if (view === 'result' && result)   content = <Result data={result} scenario={scenario!} go={go} addedWords={addedWords} onRetry={() => go('chat')} />;
   else if (view === 'vocab')              content = <Vocab words={words} onMaster={masterWord} onMiss={missWord} />;
-  else if (view === 'transcript')         content = <Transcript go={go} transcripts={transcripts} />;
+  else if (view === 'transcript')         content = <Transcript go={go} transcripts={transcripts} onDelete={handleDeleteTranscript} />;
   else if (view === 'ranking')            content = <Ranking />;
-  else if (view === 'mypage')             content = <MyPage go={go} notif={notif} setNotif={setNotif} onReset={resetData} vocabCount={words.length} transcripts={transcripts} words={words} />;
-  else                                    content = <Home go={go} onPick={pickScenario} homeLayout="level" />;
+  else if (view === 'mypage')             content = <MyPage go={go} onReset={resetData} vocabCount={words.length} transcripts={transcripts} words={words} />;
+  else                                    content = <Home go={go} onPick={pickScenario} homeLayout="level" nickname={nickname} avgScore={avgScore} streak={streak} />;
 
   const sidebarView = (['chat', 'result'] as ViewType[]).includes(view) ? 'home' : view;
 

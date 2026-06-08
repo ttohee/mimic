@@ -3,7 +3,7 @@ import { Icon, PageHead } from '../components/Shell';
 import { SCENARIOS } from '../lib/data';
 import type { TranscriptEntry, ViewType } from '../types';
 
-interface Props { go: (v: ViewType) => void; transcripts: TranscriptEntry[]; }
+interface Props { go: (v: ViewType) => void; transcripts: TranscriptEntry[]; onDelete: (id: string) => void; }
 
 function tColor(s: number) { return s >= 80 ? 'var(--score-hi)' : s >= 60 ? 'var(--score-mid)' : 'var(--score-lo)'; }
 function scenInfo(id: string) { return SCENARIOS.find(x => x.id === id) ?? { en: id, ko: '', icon: '💬', level: 'beg' as const }; }
@@ -19,7 +19,7 @@ function download(t: TranscriptEntry) {
   a.click();
 }
 
-export default function Transcript({ go: _go, transcripts }: Props) {
+export default function Transcript({ go: _go, transcripts, onDelete }: Props) {
   const [scen, setScen] = useState('all');
   const [sort, setSort] = useState<'recent' | 'score'>('recent');
 
@@ -34,7 +34,7 @@ export default function Transcript({ go: _go, transcripts }: Props) {
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
         <select value={scen} onChange={e => setScen(e.target.value)}
-          style={{ border: '1.5px solid var(--border-strong)', background: 'var(--surface)', borderRadius: 'var(--r-pill)', padding: '9px 16px', fontSize: 14, color: 'var(--text)', cursor: 'pointer' }}>
+          style={{ border: '1.5px solid var(--border-strong)', background: 'var(--surface)', borderRadius: 'var(--r-pill)', padding: '9px 40px 9px 16px', fontSize: 14, color: 'var(--text)', cursor: 'pointer' }}>
           <option value="all">전체 시나리오</option>
           {SCENARIOS.map(s => <option key={s.id} value={s.id}>{s.en} · {s.ko}</option>)}
         </select>
@@ -72,6 +72,14 @@ export default function Transcript({ go: _go, transcripts }: Props) {
                     </div>
                     <button className="btn btn-soft btn-sm" onClick={() => download(t)}>
                       <Icon name="download" size={16} /> .txt
+                    </button>
+                    <button
+                      className="btn btn-danger btn-sm"
+                      onClick={() => { if (confirm('이 대본을 삭제할까요?')) onDelete(t.id); }}
+                      style={{ padding: '6px 10px' }}
+                      title="삭제"
+                    >
+                      <Icon name="x" size={15} />
                     </button>
                   </div>
                 </div>
