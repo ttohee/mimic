@@ -71,14 +71,20 @@ function Bubble({ m, autoSpeak }: { m: Message; autoSpeak: boolean }) {
         {/* 대답 힌트 (초급) — 읽기 전용 참고 텍스트 */}
         {opts.length > 0 && (
           <div style={{ marginTop: 8, padding: '8px 12px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)' }}>
-            <div style={{ fontSize: 11.5, color: 'var(--text-3)', fontWeight: 700, marginBottom: 5, letterSpacing: '0.03em' }}>
-              💬 이렇게 말해볼 수 있어요
+            <div style={{ fontSize: 11.5, color: 'var(--text-3)', fontWeight: 700, marginBottom: 6, letterSpacing: '0.03em' }}>
+              이렇게 말해볼 수 있어요
             </div>
-            {opts.map((opt, i) => (
-              <div key={i} style={{ fontSize: 13.5, color: 'var(--text-2)', lineHeight: 1.7 }}>
-                · {opt}
-              </div>
-            ))}
+            {opts.map((opt, i) => {
+              const match = opt.match(/^(.+?)\s*\(([^)]+)\)$/);
+              const en = match ? match[1].trim() : opt;
+              const ko = match ? match[2].trim() : '';
+              return (
+                <div key={i} style={{ marginBottom: 6 }}>
+                  <div style={{ fontSize: 13.5, color: 'var(--text)', fontWeight: 600 }}>· {en}</div>
+                  {ko && <div style={{ fontSize: 12, color: 'var(--text-3)', paddingLeft: 10, marginTop: 1 }}>{ko}</div>}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -111,7 +117,7 @@ export default function Chat({ scenario, go, onEnd }: Props) {
     const system = `Translate the given English sentence to Korean and provide 3 short example responses the learner could say.
 Output ONLY these two tags, nothing else:
 [KO: Korean translation here]
-[OPT: short response A | short response B | short response C]`;
+[OPT: English A (Korean A) | English B (Korean B) | English C (Korean C)]`;
     claudeComplete([{ role: 'user', content: `English: "${s.opener}"` }], system)
       .then(reply => {
         setMsgs([{ role: 'assistant', text: s.opener + ' ' + reply.trim() }]);
@@ -142,8 +148,8 @@ Rules:
 - Be encouraging and never break character to speak Korean (except inside the Tip and KO tags).${s.level === 'beg' ? `
 - BEGINNER mode: After your English reply (and optional Tip), add these two lines:
   [KO: Korean translation of your reply in natural Korean]
-  [OPT: Short response A | Short response B | Short response C]
-- Keep the OPT options short (under 10 words each), realistic, and varied (e.g. yes/no/question).` : ''}`;
+  [OPT: English A (Korean A) | English B (Korean B) | English C (Korean C)]
+- Keep each OPT English option short (under 10 words), realistic, and varied (e.g. yes/no/question). Add a natural Korean translation in parentheses right after each option.` : ''}`;
       const history = next.map(m => ({ role: m.role, content: m.text }));
       const reply = await claudeComplete(history, system);
       setMsgs(m => [...m, { role: 'assistant', text: reply.trim() || "Sorry, could you say that again?" }]);
