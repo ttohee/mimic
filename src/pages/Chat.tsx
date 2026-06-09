@@ -16,15 +16,26 @@ function TypingDots() {
   );
 }
 
-function Bubble({ m, autoSpeak }: { m: Message; autoSpeak: boolean }) {
+function Bubble({ m, autoSpeak, onSend }: { m: Message; autoSpeak: boolean; onSend?: (text: string) => void }) {
   const mine = m.role === 'user';
+
+  // 모든 태그를 먼저 파싱 (useEffect보다 앞에 위치해야 클로저에서 참조 가능)
+  const tipMatch = !mine ? m.text.match(/\(Tip:\s*([^)]+)\)/i) : null;
+  const koMatch  = !mine ? m.text.match(/\[KO:\s*([^\]]+)\]/i)  : null;
+  const optMatch = !mine ? m.text.match(/\[OPT:\s*([^\]]+)\]/i) : null;
+  const opts = optMatch ? optMatch[1].split('|').map(o => o.trim()).filter(Boolean) : [];
+
+  let main = m.text;
+  if (tipMatch) main = main.replace(tipMatch[0], '');
+  if (koMatch)  main = main.replace(koMatch[0], '');
+  if (optMatch) main = main.replace(optMatch[0], '');
+  main = main.trim();
+
   const didSpeak = useRef(false);
   useEffect(() => {
-    if (!mine && autoSpeak && !didSpeak.current) { didSpeak.current = true; speakEN(m.text); }
+    if (!mine && autoSpeak && !didSpeak.current) { didSpeak.current = true; speakEN(main); }
   }, []);
-  // 팁 파싱: (Tip: ...) 형태를 감지해 별도 박스로 표시
-  const tipMatch = !mine ? m.text.match(/\(Tip:\s*([^)]+)\)/i) : null;
-  const main = tipMatch ? m.text.replace(tipMatch[0], '').trim() : m.text;
+
   return (
     <div style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start', gap: 10, animation: 'fadeUp .35s ease' }}>
       {!mine && (
@@ -32,7 +43,7 @@ function Bubble({ m, autoSpeak }: { m: Message; autoSpeak: boolean }) {
           <LogoMark size={22} />
         </div>
       )}
-      <div style={{ maxWidth: '64%' }}>
+      <div style={{ maxWidth: '72%' }}>
         <div style={{ padding: '13px 17px', fontSize: 15.5, lineHeight: 1.55, background: mine ? 'var(--brand-500)' : 'var(--surface)', color: mine ? '#fff' : 'var(--text)', border: mine ? 'none' : '1px solid var(--border)', borderRadius: mine ? 'var(--r-lg) var(--r-lg) 6px var(--r-lg)' : 'var(--r-lg) var(--r-lg) var(--r-lg) 6px', boxShadow: 'var(--sh-sm)' }}>
           {main}
           {!mine && (
@@ -41,10 +52,37 @@ function Bubble({ m, autoSpeak }: { m: Message; autoSpeak: boolean }) {
             </button>
           )}
         </div>
+
+        {/* 한국어 번역 (초급) */}
+        {koMatch && (
+          <div style={{ marginTop: 5, padding: '6px 13px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontSize: 13, color: 'var(--text-3)', fontStyle: 'italic' }}>
+            🇰🇷 {koMatch[1].trim()}
+          </div>
+        )}
+
+        {/* 표현 팁 */}
         {tipMatch && (
           <div style={{ marginTop: 6, padding: '8px 12px', background: 'var(--brand-50)', borderRadius: 'var(--r-sm)', fontSize: 13, color: 'var(--brand-ink)', display: 'flex', gap: 7, alignItems: 'flex-start' }}>
             <Icon name="sparkle" size={15} style={{ color: 'var(--brand-strong)', flexShrink: 0, marginTop: 1 }} />
             <span><b>💡 표현 팁 </b>{tipMatch[1].trim()}</span>
+          </div>
+        )}
+
+        {/* 대답 선택지 (초급) */}
+        {opts.length > 0 && (
+          <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {opts.map((opt, i) => (
+              <button key={i} onClick={() => onSend?.(opt)} style={{
+                padding: '7px 14px', fontSize: 13.5, background: 'var(--surface)',
+                border: '1.5px solid var(--border-strong)', borderRadius: 'var(--r-pill)',
+                color: 'var(--text)', cursor: 'pointer', fontWeight: 600,
+                transition: 'background .15s, border-color .15s',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--brand-50)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--brand-strong)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'var(--surface)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-strong)'; }}>
+                {opt}
+              </button>
+            ))}
           </div>
         )}
       </div>
@@ -91,7 +129,11 @@ Rules:
 - Reply ONLY in natural spoken English, 1-3 short sentences. Stay fully in character as the ${s.role}.
 - Keep the roleplay moving with a natural follow-up question.
 - About every other turn, gently add ONE short tip in Korean for a more natural phrasing. Format it EXACTLY like this at the end of your reply: (Tip: [한국어로 팁 내용]). Do not overuse it.
-- Be encouraging and never break character to speak Korean (except inside the Tip tag).`;
+- Be encouraging and never break character to speak Korean (except inside the Tip and KO tags).${s.level === 'beg' ? `
+- BEGINNER mode: After your English reply (and optional Tip), add these two lines:
+  [KO: Korean translation of your reply in natural Korean]
+  [OPT: Short response A | Short response B | Short response C]
+- Keep the OPT options short (under 10 words each), realistic, and varied (e.g. yes/no/question).` : ''}`;
       const history = next.map(m => ({ role: m.role, content: m.text }));
       const reply = await claudeComplete(history, system);
       setMsgs(m => [...m, { role: 'assistant', text: reply.trim() || "Sorry, could you say that again?" }]);
@@ -169,7 +211,7 @@ Rules:
 
       {/* messages */}
       <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '26px 28px', display: 'flex', flexDirection: 'column', gap: 16, background: 'var(--bg)' }}>
-        {msgs.map((m, i) => <Bubble key={i} m={m} autoSpeak={autoSpeak} />)}
+        {msgs.map((m, i) => <Bubble key={i} m={m} autoSpeak={autoSpeak} onSend={send} />)}
         {thinking && (
           <div style={{ display: 'flex', gap: 10 }}>
             <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'linear-gradient(150deg,var(--brand-300),var(--brand-600))', display: 'grid', placeItems: 'center' }}><LogoMark size={22} /></div>
