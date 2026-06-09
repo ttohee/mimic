@@ -16,7 +16,7 @@ function TypingDots() {
   );
 }
 
-function Bubble({ m, autoSpeak, onSend }: { m: Message; autoSpeak: boolean; onSend?: (text: string) => void }) {
+function Bubble({ m, autoSpeak }: { m: Message; autoSpeak: boolean }) {
   const mine = m.role === 'user';
 
   // 모든 태그를 먼저 파싱 (useEffect보다 앞에 위치해야 클로저에서 참조 가능)
@@ -68,20 +68,16 @@ function Bubble({ m, autoSpeak, onSend }: { m: Message; autoSpeak: boolean; onSe
           </div>
         )}
 
-        {/* 대답 선택지 (초급) */}
+        {/* 대답 힌트 (초급) — 읽기 전용 참고 텍스트 */}
         {opts.length > 0 && (
-          <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          <div style={{ marginTop: 8, padding: '8px 12px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)' }}>
+            <div style={{ fontSize: 11.5, color: 'var(--text-3)', fontWeight: 700, marginBottom: 5, letterSpacing: '0.03em' }}>
+              💬 이렇게 말해볼 수 있어요
+            </div>
             {opts.map((opt, i) => (
-              <button key={i} onClick={() => onSend?.(opt)} style={{
-                padding: '7px 14px', fontSize: 13.5, background: 'var(--surface)',
-                border: '1.5px solid var(--border-strong)', borderRadius: 'var(--r-pill)',
-                color: 'var(--text)', cursor: 'pointer', fontWeight: 600,
-                transition: 'background .15s, border-color .15s',
-              }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--brand-50)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--brand-strong)'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'var(--surface)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-strong)'; }}>
-                {opt}
-              </button>
+              <div key={i} style={{ fontSize: 13.5, color: 'var(--text-2)', lineHeight: 1.7 }}>
+                · {opt}
+              </div>
             ))}
           </div>
         )}
@@ -211,7 +207,7 @@ Rules:
 
       {/* messages */}
       <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '26px 28px', display: 'flex', flexDirection: 'column', gap: 16, background: 'var(--bg)' }}>
-        {msgs.map((m, i) => <Bubble key={i} m={m} autoSpeak={autoSpeak} onSend={send} />)}
+        {msgs.map((m, i) => <Bubble key={i} m={m} autoSpeak={autoSpeak} />)}
         {thinking && (
           <div style={{ display: 'flex', gap: 10 }}>
             <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'linear-gradient(150deg,var(--brand-300),var(--brand-600))', display: 'grid', placeItems: 'center' }}><LogoMark size={22} /></div>
