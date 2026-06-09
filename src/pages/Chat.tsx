@@ -6,6 +6,25 @@ import type { Message, Scenario, ViewType } from '../types';
 
 interface Props { scenario: Scenario; go: (v: ViewType) => void; onEnd: (msgs: Message[], s: Scenario) => void; }
 
+// 태그 제거 후 순수 영어 텍스트 추출
+function cleanAiText(text: string) {
+  return text
+    .replace(/\(Tip:[^)]+\)/gi, '')
+    .replace(/\[KO:[^\]]+\]/gi, '')
+    .replace(/\[OPT:[^\]]+\]/gi, '')
+    .trim();
+}
+
+// STT 결과 vs 타겟 단어 일치율 계산
+function scoreText(target: string, spoken: string) {
+  const clean = (s: string) => s.toLowerCase().replace(/[^a-z0-9'\s]/g, '').trim();
+  const tw = clean(target).split(/\s+/).filter(Boolean);
+  const sw = clean(spoken).split(/\s+/).filter(Boolean);
+  const words = tw.map((word, i) => ({ word, correct: sw[i] === word }));
+  const score = tw.length ? Math.round(words.filter(w => w.correct).length / tw.length * 100) : 0;
+  return { score, words };
+}
+
 function TypingDots() {
   return (
     <div style={{ display: 'flex', gap: 5, padding: '4px 2px' }}>
@@ -99,6 +118,7 @@ export default function Chat({ scenario, go, onEnd }: Props) {
   const [listening, setListening] = useState(false);
   const [autoSpeak, setAutoSpeak] = useState(true);
   const [toast, setToast]         = useState('');
+  const [shadowResult, setShadowResult] = useState<{ score: number; words: { word: string; correct: boolean }[] } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recRef = useRef<any>(null);
@@ -140,10 +160,11 @@ Output ONLY these two tags, nothing else:
     setMsgs(next);
     setThinking(true);
     try {
-      const system = `You are "Mimic", a warm, friendly parrot character who is an English conversation tutor. You are role-playing as a ${s.role} in a "${s.en}" scenario (${s.desc}). The learner is a Korean student practicing spoken English.
+      const system = `You are "Mimic", a warm, friendly parrot character who is an English conversation tutor. You are role-playing as a ${s.role} in a "${s.en}" scenario (${s.desc}). The learner is a Korean student practicing spoken English through shadowing.
 Rules:
-- Reply ONLY in natural spoken English, 1-3 short sentences. Stay fully in character as the ${s.role}.
-- Keep the roleplay moving with a natural follow-up question.
+- Reply ONLY in natural spoken English. Stay fully in character as the ${s.role}.
+- IMPORTANT: Keep your reply to 1-2 SHORT sentences (max 20 words total). The learner will shadow (read aloud) your sentence, so make it clear and pronounceable.
+- End with a natural follow-up question or prompt to keep the roleplay going.
 - About every other turn, gently add ONE short tip in Korean for a more natural phrasing. Format it EXACTLY like this at the end of your reply: (Tip: [한국어로 팁 내용]). Do not overuse it.
 - Be encouraging and never break character to speak Korean (except inside the Tip and KO tags).${s.level === 'beg' ? `
 - BEGINNER mode: After your English reply (and optional Tip), add these two lines:
@@ -153,6 +174,7 @@ Rules:
       const history = next.map(m => ({ role: m.role, content: m.text }));
       const reply = await claudeComplete(history, system);
       setMsgs(m => [...m, { role: 'assistant', text: reply.trim() || "Sorry, could you say that again?" }]);
+      setShadowResult(null); // 새 AI 메시지 오면 이전 결과 초기화
     } catch {
       setMsgs(m => [...m, { role: 'assistant', text: "Hmm, I didn't catch that — could you try again?" }]);
     } finally {
@@ -188,7 +210,18 @@ Rules:
     rec.onend = () => {
       setListening(false);
       setToast('');
-      if (finalText.trim()) send(finalText, finalConfidence || undefined);
+      if (finalText.trim()) {
+        // 마지막 AI 메시지와 발음 비교
+        setMsgs(prev => {
+          const lastAi = [...prev].reverse().find(m => m.role === 'assistant');
+          if (lastAi) {
+            const result = scoreText(cleanAiText(lastAi.text), finalText);
+            setShadowResult(result);
+          }
+          return prev;
+        });
+        send(finalText, finalConfidence || undefined);
+      }
     };
     rec.onerror = () => { setListening(false); setToast(''); };
     recRef.current = rec; setListening(true); rec.start();
@@ -237,14 +270,49 @@ Rules:
       </div>
 
       {/* mic input */}
-      <div style={{ background: 'var(--surface)', borderTop: '1px solid var(--border)', padding: '20px 28px 24px', flexShrink: 0 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
-          {/* 인식 중 텍스트 표시 */}
+      <div style={{ background: 'var(--surface)', borderTop: '1px solid var(--border)', padding: '16px 28px 24px', flexShrink: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+
+          {/* 섀도잉 타겟 + 결과 */}
+          {(() => {
+            const lastAi = [...msgs].reverse().find(m => m.role === 'assistant');
+            const target = lastAi ? cleanAiText(lastAi.text) : '';
+            if (!target) return null;
+            const scoreColor = shadowResult
+              ? shadowResult.score >= 80 ? '#16a34a' : shadowResult.score >= 60 ? '#d97706' : '#dc2626'
+              : undefined;
+            return (
+              <div style={{ width: '100%', maxWidth: 520, background: 'var(--brand-50)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', padding: '10px 14px' }}>
+                <div style={{ fontSize: 11, color: 'var(--brand-strong)', fontWeight: 700, marginBottom: 6, letterSpacing: '0.05em' }}>
+                  따라 읽어보세요
+                </div>
+                {shadowResult ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 6px', alignItems: 'center' }}>
+                    {shadowResult.words.map((w, i) => (
+                      <span key={i} style={{ padding: '2px 7px', borderRadius: 6, fontSize: 15, fontWeight: 600, background: w.correct ? '#dcfce7' : '#fee2e2', color: w.correct ? '#16a34a' : '#dc2626' }}>
+                        {w.word}
+                      </span>
+                    ))}
+                    <span style={{ marginLeft: 6, padding: '2px 12px', borderRadius: 99, background: scoreColor, color: '#fff', fontWeight: 800, fontSize: 13 }}>
+                      {shadowResult.score}점
+                    </span>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 15, color: 'var(--text)', lineHeight: 1.6, fontWeight: 500 }}>
+                    {target}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* STT 중간 결과 */}
           {toast && (
-            <div style={{ fontSize: 14, color: 'var(--brand-ink)', background: 'var(--brand-50)', padding: '8px 18px', borderRadius: 'var(--r-pill)', fontWeight: 600, maxWidth: 500, textAlign: 'center' }}>
-              {listening ? `🎤 "${toast}"` : toast}
+            <div style={{ fontSize: 13.5, color: 'var(--brand-ink)', background: 'var(--brand-50)', padding: '6px 16px', borderRadius: 'var(--r-pill)', fontWeight: 600, maxWidth: 500, textAlign: 'center' }}>
+              {`"${toast}"`}
             </div>
           )}
+
           <button
             onClick={toggleMic}
             style={{
@@ -259,9 +327,7 @@ Rules:
             <Icon name="mic" size={32} />
           </button>
           <div style={{ fontSize: 13, color: 'var(--text-3)', textAlign: 'center' }}>
-            {listening
-              ? '마이크를 눌러 발화 종료'
-              : '마이크를 눌러 대화 시작'}
+            {listening ? '마이크를 눌러 발화 종료' : '마이크를 눌러 따라 읽기'}
           </div>
         </div>
       </div>
