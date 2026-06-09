@@ -105,6 +105,20 @@ export default function Chat({ scenario, go, onEnd }: Props) {
     if (autoSpeak) { const t = setTimeout(() => speakEN(s.opener), 400); return () => clearTimeout(t); }
   }, []);
 
+  // 초급 모드: 오프너에도 KO 번역 + OPT 힌트 붙이기
+  useEffect(() => {
+    if (s.level !== 'beg') return;
+    const system = `Translate the given English sentence to Korean and provide 3 short example responses the learner could say.
+Output ONLY these two tags, nothing else:
+[KO: Korean translation here]
+[OPT: short response A | short response B | short response C]`;
+    claudeComplete([{ role: 'user', content: `English: "${s.opener}"` }], system)
+      .then(reply => {
+        setMsgs([{ role: 'assistant', text: s.opener + ' ' + reply.trim() }]);
+      })
+      .catch(() => {});
+  }, []);
+
   // 페이지 벗어날 때 TTS + 마이크 즉시 중단
   useEffect(() => {
     return () => {
