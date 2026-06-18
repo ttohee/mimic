@@ -6,16 +6,9 @@ import type { Message, Scenario, ViewType } from '../types';
 
 interface Props { scenario: Scenario; go: (v: ViewType) => void; onEnd: (msgs: Message[], s: Scenario) => void; }
 
-// 태그 제거 후 순수 영어 텍스트 추출
-function cleanAiText(text: string) {
-  return text
-    .replace(/\(Tip:[^)]+\)/gi, '')
-    .replace(/\[KO:[^\]]+\]/gi, '')
-    .replace(/\[OPT:[^\]]+\]/gi, '')
-    .trim();
-}
+/* ── 유틸 ─────────────────────────────────────────────── */
 
-// STT 결과 vs 타겟 단어 일치율 계산
+// 스크립트 vs STT 결과 단어 단위 비교
 function scoreText(target: string, spoken: string) {
   const clean = (s: string) => s.toLowerCase().replace(/[^a-z0-9'\s]/g, '').trim();
   const tw = clean(target).split(/\s+/).filter(Boolean);
@@ -24,6 +17,36 @@ function scoreText(target: string, spoken: string) {
   const score = tw.length ? Math.round(words.filter(w => w.correct).length / tw.length * 100) : 0;
   return { score, words };
 }
+
+// AI 응답에서 SCRIPT / KO / Tip 태그 파싱
+function parseReply(text: string) {
+  const scriptMatch = text.match(/\[SCRIPT:\s*([\s\S]+?)\]/i);
+  const koMatch     = text.match(/\[KO:\s*([\s\S]+?)\]/i);
+  const tipMatch    = text.match(/\(Tip:\s*([^)]+)\)/i);
+  const main = text
+    .replace(/\[SCRIPT:[\s\S]+?\]/gi, '')
+    .replace(/\[KO:[\s\S]+?\]/gi, '')
+    .replace(/\[OPT:[\s\S]+?\]/gi, '')
+    .replace(/\(Tip:[^)]+\)/gi, '')
+    .trim();
+  return {
+    main,
+    script: scriptMatch?.[1].trim() ?? '',
+    ko:     koMatch?.[1].trim()     ?? '',
+    tip:    tipMatch?.[1].trim()    ?? '',
+  };
+}
+
+// 레벨별 스크립트 난이도 지침
+function scriptGuide(level: string) {
+  if (level === 'beg')
+    return 'Use only simple, common words (A1-A2). Keep it 5-8 words. Avoid difficult sounds like "th", "r/l", or consonant clusters.';
+  if (level === 'mid')
+    return 'Use intermediate vocabulary (B1). 8-12 words. Include some challenging sounds: "th" (the, that, through), "r/l" pairs, vowel clusters. Vary the sentence structure.';
+  return 'Use advanced vocabulary (B2+). 10-15 words. Deliberately include phonetically difficult words such as "particularly", "comfortable", "specifically", "rural", "literally", "thoroughly", "worcestershire". Use formal register and complex sentences.';
+}
+
+/* ── 컴포넌트 ─────────────────────────────────────────── */
 
 function TypingDots() {
   return (
@@ -37,18 +60,15 @@ function TypingDots() {
 
 function Bubble({ m, autoSpeak }: { m: Message; autoSpeak: boolean }) {
   const mine = m.role === 'user';
-
-  // 모든 태그를 먼저 파싱 (useEffect보다 앞에 위치해야 클로저에서 참조 가능)
   const tipMatch = !mine ? m.text.match(/\(Tip:\s*([^)]+)\)/i) : null;
-  const koMatch  = !mine ? m.text.match(/\[KO:\s*([^\]]+)\]/i)  : null;
-  const optMatch = !mine ? m.text.match(/\[OPT:\s*([^\]]+)\]/i) : null;
-  const opts = optMatch ? optMatch[1].split('|').map(o => o.trim()).filter(Boolean) : [];
 
-  let main = m.text;
-  if (tipMatch) main = main.replace(tipMatch[0], '');
-  if (koMatch)  main = main.replace(koMatch[0], '');
-  if (optMatch) main = main.replace(optMatch[0], '');
-  main = main.trim();
+  // 버블에서는 AI 대화 내용만 표시 (SCRIPT/KO/OPT 태그 전부 제거)
+  const main = m.text
+    .replace(/\[SCRIPT:[\s\S]+?\]/gi, '')
+    .replace(/\[KO:[\s\S]+?\]/gi, '')
+    .replace(/\[OPT:[\s\S]+?\]/gi, '')
+    .replace(/\(Tip:[^)]+\)/gi, '')
+    .trim();
 
   const didSpeak = useRef(false);
   useEffect(() => {
@@ -71,39 +91,11 @@ function Bubble({ m, autoSpeak }: { m: Message; autoSpeak: boolean }) {
             </button>
           )}
         </div>
-
-        {/* 한국어 번역 (초급) */}
-        {koMatch && (
-          <div style={{ marginTop: 5, padding: '6px 13px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontSize: 13, color: 'var(--text-3)', fontStyle: 'italic' }}>
-            🇰🇷 {koMatch[1].trim()}
-          </div>
-        )}
-
         {/* 표현 팁 */}
         {tipMatch && (
           <div style={{ marginTop: 6, padding: '8px 12px', background: 'var(--brand-50)', borderRadius: 'var(--r-sm)', fontSize: 13, color: 'var(--brand-ink)', display: 'flex', gap: 7, alignItems: 'flex-start' }}>
             <Icon name="sparkle" size={15} style={{ color: 'var(--brand-strong)', flexShrink: 0, marginTop: 1 }} />
-            <span><b>💡 표현 팁 </b>{tipMatch[1].trim()}</span>
-          </div>
-        )}
-
-        {/* 대답 힌트 (초급) — 읽기 전용 참고 텍스트 */}
-        {opts.length > 0 && (
-          <div style={{ marginTop: 8, padding: '8px 12px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)' }}>
-            <div style={{ fontSize: 11.5, color: 'var(--text-3)', fontWeight: 700, marginBottom: 6, letterSpacing: '0.03em' }}>
-              이렇게 말해볼 수 있어요
-            </div>
-            {opts.map((opt, i) => {
-              const match = opt.match(/^(.+?)\s*\(([^)]+)\)$/);
-              const en = match ? match[1].trim() : opt;
-              const ko = match ? match[2].trim() : '';
-              return (
-                <div key={i} style={{ marginBottom: 6 }}>
-                  <div style={{ fontSize: 13.5, color: 'var(--text)', fontWeight: 600 }}>· {en}</div>
-                  {ko && <div style={{ fontSize: 12, color: 'var(--text-3)', paddingLeft: 10, marginTop: 1 }}>{ko}</div>}
-                </div>
-              );
-            })}
+            <span><b>표현 팁 </b>{tipMatch[1].trim()}</span>
           </div>
         )}
       </div>
@@ -111,70 +103,98 @@ function Bubble({ m, autoSpeak }: { m: Message; autoSpeak: boolean }) {
   );
 }
 
+/* ── 메인 ─────────────────────────────────────────────── */
+
 export default function Chat({ scenario, go, onEnd }: Props) {
   const s = scenario;
-  const [msgs, setMsgs] = useState<Message[]>([{ role: 'assistant', text: s.opener }]);
-  const [thinking, setThinking]   = useState(false);
-  const [listening, setListening] = useState(false);
-  const [autoSpeak, setAutoSpeak] = useState(true);
-  const [toast, setToast]         = useState('');
-  const [shadowResult, setShadowResult] = useState<{ score: number; words: { word: string; correct: boolean }[] } | null>(null);
+  const [msgs, setMsgs]                 = useState<Message[]>([{ role: 'assistant', text: s.opener }]);
+  const [thinking, setThinking]         = useState(false);
+  const [listening, setListening]       = useState(false);
+  const [autoSpeak, setAutoSpeak]       = useState(true);
+  const [toast, setToast]               = useState('');
+  const [currentScript, setCurrentScript] = useState('');
+  const [scriptKo, setScriptKo]           = useState('');
+  const [shadowResult, setShadowResult]   = useState<{ score: number; words: { word: string; correct: boolean }[] } | null>(null);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const recRef = useRef<any>(null);
+  const recRef    = useRef<any>(null);
+  const scriptRef = useRef(''); // closure 안에서 최신 script 접근용
 
+  const applyScript = (script: string, ko: string) => {
+    setCurrentScript(script);
+    setScriptKo(ko);
+    scriptRef.current = script;
+  };
+
+  // 스크롤 자동 하단 이동
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [msgs, thinking]);
 
+  // 오프너 TTS
   useEffect(() => {
     if (autoSpeak) { const t = setTimeout(() => speakEN(s.opener), 400); return () => clearTimeout(t); }
   }, []);
 
-  // 초급 모드: 오프너에도 KO 번역 + OPT 힌트 붙이기
+  // 오프너에 대한 첫 번째 대본 생성
   useEffect(() => {
-    if (s.level !== 'beg') return;
-    const system = `Translate the given English sentence to Korean and provide 3 short example responses the learner could say.
-Output ONLY these two tags, nothing else:
-[KO: Korean translation here]
-[OPT: English A (Korean A) | English B (Korean B) | English C (Korean C)]`;
-    claudeComplete([{ role: 'user', content: `English: "${s.opener}"` }], system)
+    const system = `Given an opening line from a ${s.role} in a "${s.en}" scenario, generate a natural first response the learner should say.
+Output ONLY these tags (nothing else):
+[SCRIPT: the response the learner should read aloud]
+${s.level === 'beg' ? '[KO: Korean translation of the SCRIPT]' : ''}
+
+Script level guidance: ${scriptGuide(s.level)}`;
+
+    claudeComplete([{ role: 'user', content: `Opening line: "${s.opener}"` }], system)
       .then(reply => {
-        setMsgs([{ role: 'assistant', text: s.opener + ' ' + reply.trim() }]);
+        const p = parseReply(reply);
+        if (p.script) applyScript(p.script, p.ko);
       })
       .catch(() => {});
   }, []);
 
-  // 페이지 벗어날 때 TTS + 마이크 즉시 중단
+  // 페이지 이탈 시 TTS + 마이크 즉시 중단
   useEffect(() => {
-    return () => {
-      window.speechSynthesis.cancel();
-      recRef.current?.stop();
-    };
+    return () => { window.speechSynthesis.cancel(); recRef.current?.stop(); };
   }, []);
 
-  async function send(text: string, confidence?: number) {
-    const t = text.trim();
+  async function send(spokenText: string) {
+    const t = spokenText.trim();
     if (!t || thinking) return;
-    const next: Message[] = [...msgs, { role: 'user', text: t, confidence }];
+
+    // AI에게는 스크립트(의도한 대답)를 전송해서 대화 흐름 유지
+    const scriptToSend = scriptRef.current || t;
+    const next: Message[] = [...msgs, { role: 'user', text: scriptToSend }];
     setMsgs(next);
+    applyScript('', '');
+    setShadowResult(null);
     setThinking(true);
+
     try {
-      const system = `You are "Mimic", a warm, friendly parrot character who is an English conversation tutor. You are role-playing as a ${s.role} in a "${s.en}" scenario (${s.desc}). The learner is a Korean student practicing spoken English through shadowing.
+      const system = `You are "Mimic", a warm, friendly parrot character who is an English conversation tutor. You are role-playing as a ${s.role} in a "${s.en}" scenario (${s.desc}). The learner practices English pronunciation through shadowing.
+
+For EVERY turn, output in this EXACT format — no exceptions:
+
+[Your in-character reply as ${s.role}, 1-2 natural sentences]
+[SCRIPT: A natural response for the learner to say next]
+${s.level === 'beg' ? '[KO: Korean translation of the SCRIPT only — not of your reply]' : ''}
+(Tip: Korean pronunciation or expression tip) ← optional, use once every 2-3 turns
+
 Rules:
-- Reply ONLY in natural spoken English. Stay fully in character as the ${s.role}.
-- IMPORTANT: Keep your reply to 1-2 SHORT sentences (max 20 words total). The learner will shadow (read aloud) your sentence, so make it clear and pronounceable.
-- End with a natural follow-up question or prompt to keep the roleplay going.
-- About every other turn, gently add ONE short tip in Korean for a more natural phrasing. Format it EXACTLY like this at the end of your reply: (Tip: [한국어로 팁 내용]). Do not overuse it.
-- Be encouraging and never break character to speak Korean (except inside the Tip and KO tags).${s.level === 'beg' ? `
-- BEGINNER mode: After your English reply (and optional Tip), add these two lines:
-  [KO: Korean translation of your reply in natural Korean]
-  [OPT: English A (Korean A) | English B (Korean B) | English C (Korean C)]
-- Keep each OPT English option short (under 10 words), realistic, and varied (e.g. yes/no/question). Add a natural Korean translation in parentheses right after each option.` : ''}`;
+- Your reply must stay fully in character as ${s.role}.
+- The SCRIPT must be what a customer/student would naturally say in response to YOUR reply.
+- Never leave [SCRIPT:] empty.
+- Script level guidance: ${scriptGuide(s.level)}`;
+
       const history = next.map(m => ({ role: m.role, content: m.text }));
-      const reply = await claudeComplete(history, system);
-      setMsgs(m => [...m, { role: 'assistant', text: reply.trim() || "Sorry, could you say that again?" }]);
-      setShadowResult(null); // 새 AI 메시지 오면 이전 결과 초기화
+      const reply   = await claudeComplete(history, system);
+      const parsed  = parseReply(reply.trim());
+
+      applyScript(parsed.script, parsed.ko);
+
+      const displayText = parsed.main + (parsed.tip ? ` (Tip: ${parsed.tip})` : '');
+      setMsgs(m => [...m, { role: 'assistant', text: displayText || "Sorry, could you say that again?" }]);
     } catch {
       setMsgs(m => [...m, { role: 'assistant', text: "Hmm, I didn't catch that — could you try again?" }]);
     } finally {
@@ -191,45 +211,38 @@ Rules:
     const rec = new SR();
     rec.lang = 'en-US'; rec.interimResults = true; rec.continuous = true;
     let finalText = '';
-    let finalConfidence = 0;
 
     rec.onresult = (e: SpeechRecognitionEvent) => {
       let interim = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
-        if (r.isFinal) {
-          finalText += r[0].transcript;
-          finalConfidence = (r[0] as unknown as { confidence: number }).confidence || 0;
-        } else {
-          interim += r[0].transcript;
-        }
+        if (r.isFinal) finalText += r[0].transcript;
+        else           interim   += r[0].transcript;
       }
-      // 중간 결과를 토스트로 표시
       if (interim || finalText) setToast(finalText || interim);
     };
     rec.onend = () => {
       setListening(false);
       setToast('');
       if (finalText.trim()) {
-        // 마지막 AI 메시지와 발음 비교
-        setMsgs(prev => {
-          const lastAi = [...prev].reverse().find(m => m.role === 'assistant');
-          if (lastAi) {
-            const result = scoreText(cleanAiText(lastAi.text), finalText);
-            setShadowResult(result);
-          }
-          return prev;
-        });
-        send(finalText, finalConfidence || undefined);
+        // 스크립트 vs STT 비교 → 발음 점수
+        const script = scriptRef.current;
+        if (script) setShadowResult(scoreText(script, finalText));
+        send(finalText);
       }
     };
     rec.onerror = () => { setListening(false); setToast(''); };
     recRef.current = rec; setListening(true); rec.start();
   }
 
+  const scoreColor = shadowResult
+    ? shadowResult.score >= 80 ? '#16a34a' : shadowResult.score >= 60 ? '#d97706' : '#dc2626'
+    : '';
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      {/* header */}
+
+      {/* 헤더 */}
       <div style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '14px 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button className="btn btn-sm" style={{ background: 'transparent', color: 'var(--text-3)', padding: 6 }} onClick={() => go('home')}>
@@ -247,7 +260,7 @@ Rules:
         </button>
       </div>
 
-      {/* status strip */}
+      {/* 상태 바 */}
       <div style={{ background: 'var(--brand-50)', padding: '8px 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--brand-ink)', fontWeight: 600 }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: thinking ? 'var(--lv-mid)' : 'var(--brand-500)', animation: 'pulseRing 1.6s infinite' }} />
@@ -258,7 +271,7 @@ Rules:
         </button>
       </div>
 
-      {/* messages */}
+      {/* 메시지 영역 */}
       <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '26px 28px', display: 'flex', flexDirection: 'column', gap: 16, background: 'var(--bg)' }}>
         {msgs.map((m, i) => <Bubble key={i} m={m} autoSpeak={autoSpeak} />)}
         {thinking && (
@@ -269,42 +282,44 @@ Rules:
         )}
       </div>
 
-      {/* mic input */}
+      {/* 하단: 대본 + 마이크 */}
       <div style={{ background: 'var(--surface)', borderTop: '1px solid var(--border)', padding: '16px 28px 24px', flexShrink: 0 }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
 
-          {/* 섀도잉 타겟 + 결과 */}
-          {(() => {
-            const lastAi = [...msgs].reverse().find(m => m.role === 'assistant');
-            const target = lastAi ? cleanAiText(lastAi.text) : '';
-            if (!target) return null;
-            const scoreColor = shadowResult
-              ? shadowResult.score >= 80 ? '#16a34a' : shadowResult.score >= 60 ? '#d97706' : '#dc2626'
-              : undefined;
-            return (
-              <div style={{ width: '100%', maxWidth: 520, background: 'var(--brand-50)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', padding: '10px 14px' }}>
-                <div style={{ fontSize: 11, color: 'var(--brand-strong)', fontWeight: 700, marginBottom: 6, letterSpacing: '0.05em' }}>
-                  따라 읽어보세요
-                </div>
-                {shadowResult ? (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 6px', alignItems: 'center' }}>
-                    {shadowResult.words.map((w, i) => (
-                      <span key={i} style={{ padding: '2px 7px', borderRadius: 6, fontSize: 15, fontWeight: 600, background: w.correct ? '#dcfce7' : '#fee2e2', color: w.correct ? '#16a34a' : '#dc2626' }}>
-                        {w.word}
-                      </span>
-                    ))}
-                    <span style={{ marginLeft: 6, padding: '2px 12px', borderRadius: 99, background: scoreColor, color: '#fff', fontWeight: 800, fontSize: 13 }}>
-                      {shadowResult.score}점
-                    </span>
-                  </div>
-                ) : (
-                  <div style={{ fontSize: 15, color: 'var(--text)', lineHeight: 1.6, fontWeight: 500 }}>
-                    {target}
-                  </div>
-                )}
+          {/* 대본 박스 / 발음 결과 */}
+          {(currentScript || shadowResult) && (
+            <div style={{ width: '100%', maxWidth: 520, background: 'var(--brand-50)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', padding: '10px 14px' }}>
+              <div style={{ fontSize: 11, color: 'var(--brand-strong)', fontWeight: 700, marginBottom: 6, letterSpacing: '0.05em' }}>
+                {shadowResult ? '발음 결과' : '대본 — 따라 읽어보세요'}
               </div>
-            );
-          })()}
+
+              {shadowResult ? (
+                /* 발음 결과: 단어별 초록/빨강 */
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 6px', alignItems: 'center' }}>
+                  {shadowResult.words.map((w, i) => (
+                    <span key={i} style={{ padding: '2px 7px', borderRadius: 6, fontSize: 15, fontWeight: 600, background: w.correct ? '#dcfce7' : '#fee2e2', color: w.correct ? '#16a34a' : '#dc2626' }}>
+                      {w.word}
+                    </span>
+                  ))}
+                  <span style={{ marginLeft: 6, padding: '2px 12px', borderRadius: 99, background: scoreColor, color: '#fff', fontWeight: 800, fontSize: 13 }}>
+                    {shadowResult.score}점
+                  </span>
+                </div>
+              ) : (
+                /* 대본 표시 */
+                <>
+                  <div style={{ fontSize: 15.5, color: 'var(--text)', lineHeight: 1.6, fontWeight: 500 }}>
+                    {currentScript}
+                  </div>
+                  {scriptKo && s.level === 'beg' && (
+                    <div style={{ marginTop: 5, fontSize: 12.5, color: 'var(--text-3)', fontStyle: 'italic' }}>
+                      {scriptKo}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
           {/* STT 중간 결과 */}
           {toast && (
@@ -327,8 +342,13 @@ Rules:
             <Icon name="mic" size={32} />
           </button>
           <div style={{ fontSize: 13, color: 'var(--text-3)', textAlign: 'center' }}>
-            {listening ? '마이크를 눌러 발화 종료' : '마이크를 눌러 따라 읽기'}
+            {listening
+              ? '마이크를 눌러 발화 종료'
+              : currentScript
+                ? '대본을 읽고 마이크를 눌러 시작'
+                : '마이크를 눌러 대화 시작'}
           </div>
+
         </div>
       </div>
     </div>
